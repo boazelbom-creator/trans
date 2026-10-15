@@ -1,0 +1,11 @@
+{
+  "active_community": "autism",
+  "model": "claude-sonnet-5-5",
+  "effort": "low",
+  "communities": {
+    "autism": {
+      "display_name": "אוטיזם",
+      "whatsapp_group": ""
+    }
+  }
+}

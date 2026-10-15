@@ -1,0 +1,94 @@
+
+I want to build an application that collects job ads from different sources and rewrites them using AI to suit the understanding and needs of a specific community (first community: autistic people; later others, e.g. transgender people).
+The software will be written in Python, AI will be Claude Sonnet (model claude-sonnet-5-5) called via API, and the application will be packaged as an EXE file to be installed on users' PCs.
+The sources will be Facebook groups, WhatsApp groups and websites. Collecting ads will be semi-automatic using Playwright.
+
+COMMUNITIES
+The app serves one community at a time. Adding a community means adding a folder, with no code change.
+Each community has its own folder under "communities", e.g. communities/autism, containing:
+- system_prompt.txt: instructions for Sonnet for this community
+- aids.xlsx: format, phrases, tags, keywords, sources for this community
+- examples.txt: rewritten ad examples for this community
+The user chooses the active community in the menu screen (see SCREENS). The choice is saved in config.json, so the app opens with the last community used. Every ad in the database records the community it was handled for.
+
+SCREENS
+There will be 4 screens: menu, collecting ads, presented ads, detailed ad + actions.
+- Menu: shows the active community and 2 options: collecting and presenting. If the communities folder has more than one community, the menu also shows a list to choose the community. Choosing a community loads its files (system_prompt.txt, aids.xlsx, examples.txt).
+- Collecting: presents the list of sources from sheet "ערוצי איתור משרות". The user clicks a source, and Playwright opens the group/site in a visible browser. The user selects the text of one ad in the browser and presses a "Capture" button in the app. The app takes the selected text as the source ad.
+- Presenting: presents all ads handled by the system as a list, without the ad content. Each row shows: collect date, source name, status, score, tags, keywords. Only ads of the active community are shown. The user can filter by status and characteristics (tags, keywords, score, source) and open an ad in the detailed screen.
+- Detailed ad: presents the ad itself and its characteristics. The user can edit the ad text, change the ad status (approved, rejected) and distribute it to a WhatsApp group.
+- The user can move directly between the collecting and presenting screens, without going back to the menu.
+
+HEBREW DISPLAY
+Ad texts, tags, keywords and source names are in Hebrew, often mixed with English (company names, emails, job titles).
+- The UI uses a right-to-left layout.
+- Text areas display mixed Hebrew/English text correctly (bidirectional text).
+- Fonts support Hebrew.
+- All files are read and written as UTF-8.
+- The UI is built with PySide6 (Qt), which supports right-to-left layout and mixed Hebrew/English text well.
+
+AD PROCESS
+1. Retrieve an ad using the collecting screen.
+2. Rephrase the ad using Sonnet.
+3. Present the ad for manual validation (edit, approve / reject).
+4. Distribute the ad to WhatsApp: the app opens WhatsApp Web via Playwright, goes to the active community's distribution group set in config.json and fills in the message. The user presses Send. The app never sends by itself.
+
+Ad status flow: new -> approved -> distributed, or new -> rejected.
+
+DATA
+Data on ads will be stored in SQLite, in one table:
+- id: primary key
+- community: the community the ad was handled for
+- collect_date
+- distribute_date: empty until the ad is distributed
+- source_name
+- source_url: the link the ad came from
+- origin_ad: the original text, never changed
+- sonnet_ad: Sonnet's rewrite
+- user_ad: the final text after the user's edits (starts as a copy of sonnet_ad, so it is always filled)
+- status: new / approved / rejected / distributed
+- tags: JSON list
+- keywords: JSON list
+- score: 0-100
+- score_reason: Sonnet's explanation of the score
+- model: the AI model that produced sonnet_ad (e.g. claude-sonnet-5-5)
+- prompt_version: identifies the exact system_prompt.txt, aids.xlsx and examples.txt used (e.g. a hash of the three files)
+
+Ads are never deleted.
+
+FUTURE: TRAINING A LOCAL MODEL
+Later, I may train a local model to rephrase ads without Sonnet. The data above supports this:
+- Training pairs: origin_ad -> user_ad, for ads with status approved or distributed (user_ad is the human-approved version).
+- sonnet_ad vs user_ad shows what the user had to correct.
+- community, model and prompt_version allow training per community and choosing data from a specific prompt version.
+
+INSTALLATION
+The app runs on Windows 10/11 only.
+The user receives one file, setup.exe, and installs with a few clicks (Next, Next, Finish).
+- No Python, no browser download and no other installation is needed on the user's PC: Python and all libraries are bundled with the app.
+- Playwright uses Microsoft Edge, which is already installed on every Windows 10/11 PC.
+- The app is installed for the current user only (no administrator rights needed), in one folder, with a desktop shortcut, a Start menu entry and an uninstaller.
+- Facebook and WhatsApp Web logins are kept in a browser profile inside the app folder, so the user logs in once (WhatsApp: scan the QR code once).
+- Updates: the user runs a new setup.exe. It replaces the program but never overwrites config.json, api_key.json, the communities folder or the database.
+- The setup.exe is built with PyInstaller (bundles the app) and Inno Setup (creates the installer).
+- The EXE is not code-signed, so on the first run Windows may show "Windows protected your PC". The user clicks "More info" -> "Run anyway" once.
+
+Beside the program, the installation includes: config.json, api_key.json, and the communities folder (system_prompt.txt, aids.xlsx, examples.txt per community).
+- config.json holds app settings: the last active community, the model name, and the WhatsApp distribution group name for each community.
+- api_key.json holds the Anthropic API key in plain text. The installation ships with my API key so a new user can try the system; a spending limit is set in the Anthropic API console. If the user likes the system, they buy their own API key and replace the key in api_key.json.
+
+EXCEL
+At startup, the app reads the active community's aids.xlsx once and keeps it in memory (no JSON files are created). The sheets used:
+- "פורמט" -> format
+- "ניסוחים נפוצים" -> phrases
+- "תיוגים" -> tags
+- "מילות מפתח לחיפוש" -> keywords
+- "ערוצי איתור משרות" -> sources (links)
+The sheet "פרופילים (בבנייה)" is not used.
+
+SONNET CALL
+- Detailed explanations about Sonnet's work are in the active community's system_prompt.txt.
+- Each call sends: system_prompt.txt, the Excel sheets (format, phrases, tags, keywords), examples.txt, and the source ad.
+- Sonnet returns a JSON object (enforced with structured output): is_job_ad, rewritten_ad, tags, keywords, score, score_reason.
+- If is_job_ad is false, the app shows a message and does not save the ad.
+- To reduce cost, the call uses effort "low" (rewriting an ad is a simple task, so little internal thinking is needed).
